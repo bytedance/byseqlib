@@ -73,7 +73,7 @@ long Decoder<OpType_>::compute_buffer_bytesize() {
   long decode_buffer_bytesize =
       _max_batch_size * _tw._beam_size * _tw._hidden_size * 4 +
       _max_batch_size * _tw._beam_size *
-          max(_tw._hidden_size, _tw._inner_size) +
+          max(_tw._hidden_size, _tw._decoder_inner_size) +
       _max_batch_size * _tw._head_num * _tw._beam_size * _tw._max_step;
   decode_buffer_bytesize *= sizeof(_DataType);
 
@@ -152,8 +152,8 @@ void Decoder<OpType_>::init_buffer(void* pbuf) {
   _p_d_query_buf1 = curp;  // "query" buffer
   curp += _max_batch_size * _tw._beam_size * _tw._hidden_size;
   _p_d_query_buf2 = curp;  // "query" buffer
-  curp +=
-      _max_batch_size * _tw._beam_size * max(_tw._hidden_size, _tw._inner_size);
+  curp += _max_batch_size * _tw._beam_size *
+          max(_tw._hidden_size, _tw._decoder_inner_size);
   _p_d_c = curp;  // correlation(attention score) buffer
   curp += _max_batch_size * _tw._head_num * _tw._beam_size * _tw._max_step;
 
@@ -215,8 +215,8 @@ std::string Decoder<OpType_>::check() {
   // if (_max_thread_per_block < _tw._hidden_size) {
   //   return "violate hidden_size <= max_thread_per_block";
   // }
-  if (_tw._inner_size & 1) {
-    return "violate inner_size % 2 = 0";
+  if (_tw._decoder_inner_size & 1) {
+    return "violate decoder_inner_size % 2 = 0";
   }
   if (_tw._dim_per_head & 1) {
     return "violate dim_per_head % 2 = 0";
@@ -461,7 +461,8 @@ void Decoder<OpType_>::self_attention() {
       _step_token_num, _tw._hidden_size, _stream, _p_d_cur_step_query,
       _p_d_query_buf1, _p_d_dec_wei[_weight_offset],
       _p_d_dec_wei[_weight_offset + 1], _p_d_dec_wei[_weight_offset + 5],
-      _max_thread_per_block, _tw._is_post_ln);
+      _max_thread_per_block, _tw._is_post_ln,
+      /* do_layernorm */ (_tw._has_layernorm_embedding || _weight_offset != 0));
 
 #ifdef DEBUG_RESULT
   print_vec(_p_d_query_buf1, "self attn ln(head): ", 5);
@@ -648,29 +649,29 @@ void Decoder<OpType_>::ffn_add_norm() {
 
   /* ---step 1. first ffn layer--- */
   CHECK_GPU_ERROR(cublasGemmEx(
-      _hd, CUBLAS_OP_N, CUBLAS_OP_N, _tw._inner_size, _step_token_num,
+      _hd, CUBLAS_OP_N, CUBLAS_OP_N, _tw._decoder_inner_size, _step_token_num,
       _tw._hidden_size, &_type_one, _p_d_dec_wei[_weight_offset + 14], _AType,
-      _tw._inner_size, _p_d_query_buf1, _BType, _tw._hidden_size, &_type_zero,
-      _p_d_query_buf2, _CType, _tw._inner_size, _computeType,
-      CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+      _tw._decoder_inner_size, _p_d_query_buf1, _BType, _tw._hidden_size,
+      &_type_zero, _p_d_query_buf2, _CType, _tw._decoder_inner_size,
+      _computeType, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 
   if (_tw._use_gelu) {
     ker_bias_gelu_launcher<_DataType>(
         _step_token_num, _max_thread_per_block, _stream, _p_d_query_buf2,
-        _p_d_dec_wei[_weight_offset + 15], _tw._inner_size);
+        _p_d_dec_wei[_weight_offset + 15], _tw._decoder_inner_size);
   } else {
     ker_bias_relu_launcher<_DataType>(
         _step_token_num, _max_thread_per_block, _stream, _p_d_query_buf2,
-        _p_d_dec_wei[_weight_offset + 15], _tw._inner_size);
+        _p_d_dec_wei[_weight_offset + 15], _tw._decoder_inner_size);
   }
 
   /* ---step 2. second ffn layer--- */
   CHECK_GPU_ERROR(cublasGemmEx(
       _hd, CUBLAS_OP_N, CUBLAS_OP_N, _tw._hidden_size, _step_token_num,
-      _tw._inner_size, &_type_one, _p_d_dec_wei[_weight_offset + 16], _AType,
-      _tw._hidden_size, _p_d_query_buf2, _BType, _tw._inner_size, &_type_one,
-      _p_d_cur_step_query, _CType, _tw._hidden_size, _computeType,
-      CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+      _tw._decoder_inner_size, &_type_one, _p_d_dec_wei[_weight_offset + 16],
+      _AType, _tw._hidden_size, _p_d_query_buf2, _BType,
+      _tw._decoder_inner_size, &_type_one, _p_d_cur_step_query, _CType,
+      _tw._hidden_size, _computeType, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   return;
 }
 

@@ -92,7 +92,8 @@ class TransformerWeight {
   }
 
   int _hidden_size;
-  int _inner_size;
+  int _encoder_inner_size;
+  int _decoder_inner_size;
   int _max_step;
   int _src_vocab_size;
   int _trg_vocab_size;
@@ -117,6 +118,7 @@ class TransformerWeight {
   bool _no_scale_embedding;
   bool _use_gelu;
   bool _is_multilingual;
+  bool _has_layernorm_embedding;
   const int *_p_d_trg_vocab_mask;
 
   void print_model_config() {
@@ -124,7 +126,8 @@ class TransformerWeight {
     std::cout << "encoder layers: " << _n_enc_layer << std::endl;
     std::cout << "decoder layers: " << _n_dec_layer << std::endl;
     std::cout << "hidden size: " << _hidden_size << std::endl;
-    std::cout << "inner size: " << _inner_size << std::endl;
+    std::cout << "encoder inner size: " << _encoder_inner_size << std::endl;
+    std::cout << "decoder inner size: " << _decoder_inner_size << std::endl;
     std::cout << "head number: " << _head_num << std::endl;
     std::cout << "dim per head: " << _dim_per_head << std::endl;
     std::cout << "src vocab size: " << _src_vocab_size << std::endl;
@@ -136,6 +139,8 @@ class TransformerWeight {
     std::cout << "end_id: " << _end_id << std::endl;
     std::cout << "padding_id: " << _padding_id << std::endl;
     std::cout << "is_multilingual: " << _is_multilingual << std::endl;
+    std::cout << "has_layernorm_embedding: " << _has_layernorm_embedding
+              << std::endl;
     std::cout << std::endl;
     std::cout << "***generator config***" << std::endl;
     std::cout << "beam size: " << _beam_size << std::endl;
